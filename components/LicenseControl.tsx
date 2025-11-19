@@ -522,6 +522,74 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       }, {} as Record<string, License[]>);
     }, [filteredLicenses]);
 
+    const handleExportProductToXlsx = async (productName: string, licensesToExport: License[]) => {
+        try {
+            if (licensesToExport.length === 0) {
+                alert(`Nenhuma licença para exportar para o produto "${productName}".`);
+                return;
+            }
+    
+            await import('xlsx');
+            const XLSX = (window as any).XLSX;
+    
+            if (!XLSX || !XLSX.utils || typeof XLSX.utils.json_to_sheet !== 'function') {
+                console.error("A biblioteca XLSX não foi carregada corretamente.", { xlsxFromWindow: XLSX });
+                alert("Ocorreu um erro ao carregar a biblioteca de exportação.");
+                return;
+            }
+    
+            const headerMapping: { [K in keyof License]?: string } = {
+                produto: 'Produto',
+                tipoLicenca: 'Tipo de Licença',
+                chaveSerial: 'Chave/Serial',
+                dataExpiracao: 'Data de Expiração',
+                usuario: 'Usuário',
+                cargo: 'Cargo',
+                setor: 'Setor',
+                gestor: 'Gestor',
+                centroCusto: 'Centro de Custo',
+                contaRazao: 'Conta Razão',
+                nomeComputador: 'Nome do Computador',
+                numeroChamado: 'Número do Chamado',
+                observacoes: 'Observações'
+            };
+    
+            const dataKeys = Object.keys(headerMapping) as (keyof License)[];
+    
+            const dataToExport = licensesToExport.map(item => {
+                const row: { [key: string]: any } = {};
+                dataKeys.forEach(key => {
+                    const header = headerMapping[key];
+                    if (header) {
+                        row[header] = item[key] ?? '';
+                    }
+                });
+                return row;
+            });
+    
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Licenças");
+    
+            const base64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+            const dataUri = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64}`;
+    
+            const safeProductName = productName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const fileName = `licencas_${safeProductName}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+            const a = document.createElement('a');
+            a.href = dataUri;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+    
+        } catch (error) {
+            console.error("Erro ao exportar para XLSX:", error);
+            alert("Ocorreu um erro inesperado ao tentar exportar a planilha.");
+        }
+    };
+
     const toggleProductExpansion = (productName: string) => {
         setExpandedProducts(prev => 
             prev.includes(productName)
@@ -561,9 +629,9 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         const date = parseDateString(dateStr);
         if (!date) return <span className="font-semibold flex items-center gap-1.5 text-red-500"><Icon name="TriangleAlert" size={16} /> Data Inválida</span>;
         
-        // FIX: Corrigido para passar o objeto Date parseado para as funções de verificação, em vez da string original.
+        // FIX: Pass the parsed Date object to the helper functions instead of the original string.
         const expiring = isExpiringSoon(date);
-        // FIX: Corrigido para passar o objeto Date parseado para as funções de verificação, em vez da string original.
+        // FIX: Pass the parsed Date object to the helper functions instead of the original string.
         const expired = isExpired(date);
         const color = expired ? 'text-red-500 dark:text-red-400' : expiring ? 'text-yellow-500 dark:text-yellow-400' : '';
         const icon = expired ? 'TriangleAlert' : expiring ? 'Timer' : null;
@@ -666,6 +734,18 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                                                 <span className="font-bold text-lg">{availableCount}</span>
                                             </span>
                                         </div>
+                                        {isAdmin && (
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleExportProductToXlsx(productName, licensesInGroup);
+                                                }}
+                                                className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300 p-1 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/50" 
+                                                title={`Exportar ${productName} para Excel`}
+                                            >
+                                                <Icon name="FileDown" size={18} />
+                                            </button>
+                                        )}
                                         <Icon name={isExpanded ? "ChevronDown" : "ChevronRight"} size={24} className="text-gray-500 dark:text-dark-text-secondary transition-transform" />
                                     </div>
                                 </header>
